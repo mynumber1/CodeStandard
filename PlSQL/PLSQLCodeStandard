@@ -1,0 +1,170 @@
+	命名约定 
+	本约定是指数据库、数据库对象如TABLE、SEQUENCE、PROCEDURE、COLUMN等的命名约定； 
+	命名采用富有意义英文词汇，除个别通用的（见列表）要避免使用缩写，多个单词组成的名字中间以下划线分割； 
+	长度为1－30个字符，Database link名称也不要超过30个字符； 
+	命名只能使用英文字母，数字和下划线； 
+	避免使用Oracle的保留字如level、关键字如type（见列表）； 
+	各表之间相关列名尽量同名； 
+	数据表的命名：数据表命名为“T_”＋有意义的名字；
+	INDEX命名：table_name+column_name+index_type(1 byte)+idx,各部分以下划线（_）分割。多单词组成的column　name，取前几个单词首字母，加末单词组成column_name。如：sample表member_id上的index: sample_mid_idx 　 news表title上的unique index:news_titile_uidx； 
+	SEQUENCE命名：seq_+table_name； 
+6.6.2	注释说明 
+	本注释说明主要用于PL/SQL程序及其它SQL文件，其它可作参考； 
+
+	接受的注释有三种： 
+     ――　这儿是注释 
+     ／＊　这儿是注释　＊／ 
+     REM　这儿是注释 
+
+	开始注释，类似JAVAK中的开始注释，主要列出文件名，编写日期，版权说明，程序功能以及                                        修改记录： 
+REM 
+REM　$Header: filename, version, created date,auther 
+REM 
+REM Copyright 
+REM 
+REM FUNCTION 
+REM function explanation 
+REM 
+REM NOTES 
+REM 
+REM MODIFIED　（yy/mm/dd） 
+REM who when - for what, recently goes first 
+
+	块注释，如表注释，PROCEDURE注释等，同JAVA: 
+/* 
+* This table is for TrustPass 
+* mainly store the information 
+* of TrustPass members 
+*/ 
+
+	单行注释，如列注释： 
+login_id VARCHAR2(32) NOT NULL, -- 会员标识 
+
+6.6.3	缩进 
+低级别语句在高级别语句后的，一般缩进4个空格：
+DECLARE 
+v_MemberId VARCHAR2(32), 
+BEGIN 
+SELECT admin_member_id INTO v_MemberId 
+FROM company 
+WHERE id = 10; 
+DBMS_OUTPUT.PUT_LINE(v_MemberId); 
+END; 
+同一语句不同部分的缩进，如果为sub statement，则通常为2个空格，如果与上一句某部分有密切联系的，则缩至与其对齐： 
+BEGIN 
+FOR v_TmpRec IN 
+(SELECT login_id, 
+gmt_created, -- here indented as column above 
+satus 
+FROM member -- sub statement 
+WHERE site = 'china' 
+AND country='cn' ) 
+LOOP 
+NULL; 
+END LOOP; 
+END; 
+6.6.4	断行 
+	一行最长不能超过80字符 
+	同一语句不同字句之间 
+	逗号以后空格 
+	其他分割符前空格 
+SELECT　offer_name 
+||',' 
+||offer_count as offer_category, 
+id 
+FROM category 
+WHERE super_category_id_1 = 0; 
+大小写 
+属于ORACLE的关键字大小，表名、列名等小写。
+6.6.5	列类型的选择 
+	 用CHAR(1)代替布尔值； 
+	 应尽量使用VARCHAR2代替CHAR类型； 
+	 VARCHAR(2)最多4000字符； 
+	 DATE精确到微秒，而非天； 
+	 使用CLOB代替LONG，BLOB代替LONG　RAW； 
+	 ORACLE只有NUMBER一种数据类型，使用时请给定长度； 
+6.6.6	主键选择 
+	选择有意义的，不太长且能唯一标识记录行的列做主键，没有这种列时，才考虑使用SEQUENCE做主健。 
+6.6.7	列长度的选择 
+	应当根据实际需要选择列长度。有对应web 页面的，与页面上对应列长度一致。 
+	对数据的验证除数据库端实现外还要尽可能在表现层控制。 
+6.6.8	使用SQL语句的约定 
+	尽量避免在循环中使用SQL语句。 
+	避免在WHERE字句中对列使用函数: 
+SELECT　＊　 
+FROM　service_promotion 
+WHERE TO_CHAR(gmt_modified,’yyyy-mm-dd’) 
+= ‘20001-09-01’; 
+　　而应使用： 
+SELECT * 
+FROM service_promotion 
+WHERE gmt_modified 
+>= TO_DATE(‘2001-9-01’,’yyyy-mm-dd’) 
+AND gmt_modified 
+< TO_DATE(‘2001-9-02’,’yyyy-mm-dd’); 
+
+	避免使用数据库的类型自动转换功能： 
+SELECT * FROM category 
+WHERE id = ‘123’; -- id’s type is number 
+
+	避免无效的连接: 
+SELECT count(*) 
+FROM offer a, count_by_email b 
+WHERE a.email(+) = b.email; 
+
+	连接（join）时要使用别名: 
+SELECT a.*,b.offer_count(*) 
+FROM offer a, count_by_email b 
+WHERE a.email(+) = b.email; 
+
+	取TABLE 的META信息： 
+SELECT * 
+FROM table_name 
+WHERE rowid is null (or rownum = 1 or pk = impossible_value); 
+可考虑使用： 
+SELECT * 
+FROM table_name 
+WHERE 1 = 0 ; 
+
+6.6.9	列值约定 
+	有固定值列表的列，如status, action, 其值使用小写字母或数字； 
+	应尽可能选择数字来代表固定值列表中的值，相应的列定义为NUMBER型； 
+	用CHAR（1）表示布尔值的取大写：“Y”，“N”。 
+6.6.10	数据库设计流程 
+在新项目设计评审会议，应有DBA参加。在SCHEMA确定以后方可开始编码。 
+6.6.11	附录
+	缩写字列表： 
+payment pymt 
+my trade activity mta 
+
+	特殊字列表： 
+ACCESS DECIMAL INITIAL ON START 
+ADD NOT INSERT ONLINE SUCCESSFUL 
+ALL DEFAULT INTEGER OPTION SYNONYM 
+ALTER DELETE INTERSECT OR SYSDATE 
+AND DESC INTO ORDER TABLE 
+ANY DISTINCT IS PCTFREE THEN 
+AS DROP LEVEL PRIOR TO 
+ASC ELSE LIKE PRIVILEGES TRIGGER 
+AUDIT EXCLUSIVE LOCK PUBLIC UID 
+BETWEEN EXISTS LONG RAW UNION 
+BY FILE MAXEXTENTS RENAME UNIQUE 
+FROM FLOAT MINUS RESOURCE UPDATE 
+CHAR FOR MLSLABEL REVOKE USER 
+CHECK SHARE MODE ROW VALIDATE 
+CLUSTER GRANT MODIFY ROWID VALUES 
+COLUMN GROUP NOAUDIT ROWNUM VARCHAR 
+COMMENT HAVING NOCOMPRESS ROWS VARCHAR2 
+COMPRESS IDENTIFIED NOWAIT SELECT VIEW 
+CONNECT IMMEDIATE NULL SESSION WHENEVER 
+CREATE IN NUMBER SET WHERE 
+CURRENT INCREMENT OF SIZE WITH 
+DATE INDEX OFFLINE SMALLINT 
+CHAR VARHCAR VARCHAR2 NUMBER DATE LONG 
+CLOB BLOB BFILE 
+INTEGER DECIMAL 
+SUM COUNT GROUPING AVERAGE 
+TYPE 
+6.6.12		建表语句中不允许使用 EXISTS,REPLACE 等关键字
+ 1、MySQL的更新脚本中，禁止出现语句：DROP TABLE IF EXISTS
+  2、Oracle的更新脚本中，禁止出现语句：CREATE OR REPLACE
