@@ -1,0 +1,237 @@
+using ICSharpCode.SharpZipLib.Zip;
+using SharpCompress.Common;
+using SharpCompress.Reader;
+using Spring.Admin.Common.Ftp;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+
+namespace Spring.Admin.Bussiness
+{
+    public class FileUnBiz : IFileUnBiz
+    {
+        /// <summary>
+        /// 调用解压文件方法
+        /// </summary>
+        /// <param name="unFileName">要解压文件的路径</param>
+        /// <param name="savePath">解压后要保存到的目录</param>
+        /// <param name="ext">要解压文件的格式</param>
+        public bool FileUn(string unFileName, string savePath, string ext)
+        {
+            if (ext.ToLower() == ".zip")
+            {
+                UnZip(unFileName, savePath);
+            }
+            else if (ext.ToLower() == ".rar")
+            {
+                UnRar(unFileName, savePath);
+            }
+            else
+            {
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 将格式为zip的压缩文件解压到指定的目录
+        /// </summary>
+        /// <param name="zipFileName">要解压zip文件的路径</param>
+        /// <param name="savePath">解压后要保存到的目录</param>
+        public static void UnZip(string zipFileName, string savePath)
+        {
+            ZipInputStream s = new ZipInputStream(File.OpenRead(zipFileName));
+            try
+            {
+                //生成主解压目录
+                Directory.CreateDirectory(Path.GetDirectoryName(savePath));
+
+                ZipEntry theEntry;
+                while ((theEntry = s.GetNextEntry()) != null)
+                {
+                    string fileName = Path.GetFileName(theEntry.Name);
+                    if (fileName != String.Empty)
+                    {
+                        try
+                        {
+                            //string fName = theEntry.Name.Substring(theEntry.Name.LastIndexOf("/"), theEntry.Name.Length - theEntry.Name.LastIndexOf("/"));
+                            //解压文件到指定的目录
+                            FileStream streamWriter = File.Create(savePath + fileName);
+
+                            int size = 2048;
+                            byte[] data = new byte[2048];
+                            while (true)
+                            {
+                                size = s.Read(data, 0, data.Length);
+                                if (size > 0)
+                                {
+                                    streamWriter.Write(data, 0, size);
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                            streamWriter.Close();
+                        }
+                        catch (Exception ex)
+                        {
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            s.Close();
+        }
+
+        /// <summary>
+        /// 将格式为rar的压缩文件解压到指定的目录
+        /// </summary>
+        /// <param name="rarFileName">要解压rar文件的路径</param>
+        /// <param name="savePath">解压后要保存到的目录</param>
+        public static void UnRar(string rarFileName, string savePath)
+        {
+            using (Stream stream = File.OpenRead(rarFileName))
+            {
+                var reader = ReaderFactory.Open(stream);
+                while (reader.MoveToNextEntry())
+                {
+                    if (!reader.Entry.IsDirectory)
+                    {
+                        Console.WriteLine(reader.Entry.FilePath);
+                        reader.WriteEntryToDirectory(savePath, ExtractOptions.ExtractFullPath | ExtractOptions.Overwrite);
+                    }
+                }
+            }
+        }
+
+        // <summary>
+        /// 功能：解压zip格式的文件。
+        /// </summary>
+        /// <param name="zipFilePath">压缩文件路径</param>
+        /// <param name="unZipDir">解压文件存放路径,为空时默认与压缩文件同一级目录下，跟压缩文件同名的文件夹</param>
+        /// <param name="err">出错信息</param>
+        /// <returns>解压是否成功</returns>
+        public static IList<FtpUploadResult> UnZipAndSendToServer(string zipFilePath, string unZipDir, FtpConfig ftps)
+        {
+            IList<FtpUploadResult> list = new List<FtpUploadResult>();
+            // FtpConfig ftps = FtpConfig.GetConfigInfo();
+            try
+            {
+                if (zipFilePath == string.Empty)
+                {
+                    throw new Exception("压缩文件不能为空！");
+                }
+                if (!File.Exists(zipFilePath))
+                {
+                    throw new System.IO.FileNotFoundException("压缩文件不存在！");
+                }
+                //解压文件夹为空时默认与压缩文件同一级目录下，跟压缩文件同名的文件夹
+                if (unZipDir == string.Empty)
+                    unZipDir = zipFilePath.Replace(Path.GetFileName(zipFilePath), Path.GetFileNameWithoutExtension(zipFilePath));
+                if (!unZipDir.EndsWith("/"))
+                    unZipDir += "/";
+                if (!Directory.Exists(unZipDir))
+                    Directory.CreateDirectory(unZipDir);
+
+                using (ZipInputStream s = new ZipInputStream(File.OpenRead(zipFilePath)))
+                {
+                    ZipEntry theEntry;
+                    while ((theEntry = s.GetNextEntry()) != null)
+                    {
+                        string directoryName = Path.GetDirectoryName(theEntry.Name);
+                        string fileName = Path.GetFileName(theEntry.Name);
+                        if (directoryName.Length > 0)
+                        {
+                            Directory.CreateDirectory(unZipDir + directoryName);
+                        }
+                        if (!directoryName.EndsWith("/"))
+                        {
+                            directoryName += "/";
+                            FtpHelper.FtpCheckDirectoryExist(directoryName, ftps);
+                        }
+
+                        if (fileName != String.Empty)
+                        {
+                            var obj = new FtpUploadResult();
+                            obj.FileName = theEntry.Name;
+                            obj.FilePath = directoryName.Replace("/", "\\");
+                            try
+                            {
+                                if (CheckFileExtName(fileName))
+                                {
+                                    string tfile = unZipDir + theEntry.Name;
+                                    using (FileStream streamWriter = File.Create(unZipDir + theEntry.Name))
+                                    {
+                                        int size = 2048;
+                                        byte[] data = new byte[2048];
+                                        while (true)
+                                        {
+                                            size = s.Read(data, 0, data.Length);
+                                            if (size > 0)
+                                            {
+                                                streamWriter.Write(data, 0, size);
+                                            }
+                                            else
+                                            {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    FileInfo info = new FileInfo(tfile.Replace("/", "\\"));
+                                    bool isSuccess = FtpHelper.FtpUpload(info.OpenRead(), directoryName, info.Name, ftps);
+                                    if (!isSuccess)
+                                    {
+                                        obj.FileResult = !isSuccess;
+                                        list.Add(obj);
+                                    }
+                                }
+                                else
+                                {
+                                    obj.FileResult = false;
+                                    list.Add(obj);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw;
+            }
+            return list;
+        }
+
+        private static bool CheckFileExtName(string filePath)
+        {
+            string[] extNames = ".jpg|.png|.gif|.js|.css|.fon|.ttf|.html|.cshtml|.jpeg|.woff|.SVG|.otf".Split('|');
+            bool IsResult = false;
+            string tempExtName = filePath.Substring(filePath.LastIndexOf('.'));
+            foreach (var item in extNames)
+            {
+                if (item == tempExtName)
+                {
+                    IsResult = true;
+                    break;
+                }
+            }
+            return IsResult;
+        }
+        
+
+
+
+
+
+    }
+
+
+}
