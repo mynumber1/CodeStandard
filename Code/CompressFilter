@@ -1,0 +1,33 @@
+ [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = false)]
+    public class CompressFilter : ActionFilterAttribute
+    {
+        private System.IO.Stream stream = null;
+        public override void OnActionExecuting(ActionExecutingContext filterContext)
+        {
+            HttpRequestBase request = filterContext.HttpContext.Request;
+            string acceptEncoding = request.Headers["Accept-Encoding"];
+            if (string.IsNullOrWhiteSpace(acceptEncoding)) return;
+            acceptEncoding = acceptEncoding.ToUpperInvariant();
+            HttpResponseBase response = filterContext.HttpContext.Response;
+            if (acceptEncoding.Contains("GZIP"))
+            {
+                response.AppendHeader("Content-encoding", "gzip");
+                stream = response.Filter;
+                response.Filter = new GZipStream(response.Filter, CompressionMode.Compress);
+            }
+            else if (acceptEncoding.Contains("DEFLATE"))
+            {
+                response.AppendHeader("Content-encoding", "deflate");
+                stream = response.Filter;
+                response.Filter = new DeflateStream(response.Filter, CompressionMode.Compress);
+            }
+        }
+        public override void OnResultExecuted(ResultExecutedContext filterContext)
+        {
+            if (filterContext.Exception != null)
+            {
+                HttpResponseBase response = filterContext.HttpContext.Response;
+                response.Filter = stream;
+            }
+        }
+    }
