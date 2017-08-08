@@ -1,0 +1,218 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Net;
+using System.Net.Cache;
+using System.Net.Mail;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
+using System.ServiceModel;
+using System.ServiceModel.Channels;
+using System.Text;
+using System.Web;
+
+namespace mycode
+{
+	public static class NetUtils
+	{
+		public static string ClientIp()
+		{
+			HttpContext current = HttpContext.Current;
+			if (current == null)
+			{
+				return string.Empty;
+			}
+			HttpRequest request = current.Request;
+			string text = request.ServerVariables["HTTP_X_FORWARDED_FOR"];
+			if (!string.IsNullOrEmpty(text))
+			{
+				return text;
+			}
+			text = request.ServerVariables["REMOTE_ADDR"];
+			if (string.IsNullOrEmpty(text))
+			{
+				text = request.UserHostAddress;
+			}
+			return text;
+		}
+
+		public static string WcfClientIp()
+		{
+			OperationContext current = OperationContext.Current;
+			if (current == null)
+			{
+				return string.Empty;
+			}
+			MessageProperties incomingMessageProperties = current.IncomingMessageProperties;
+			RemoteEndpointMessageProperty remoteEndpointMessageProperty = incomingMessageProperties[RemoteEndpointMessageProperty.Name] as RemoteEndpointMessageProperty;
+			if (remoteEndpointMessageProperty != null)
+			{
+				return remoteEndpointMessageProperty.Address;
+			}
+			return string.Empty;
+		}
+
+		public static string LocalIp()
+		{
+			string hostName = Dns.GetHostName();
+			IPHostEntry hostEntry = Dns.GetHostEntry(hostName);
+			return hostEntry.AddressList.First((IPAddress m) => m.AddressFamily == AddressFamily.InterNetwork).ToString();
+		}
+
+		public static string LocalMachineName()
+		{
+			return Dns.GetHostName();
+		}
+
+		public static string RootDomain(string url)
+		{
+			string result;
+			try
+			{
+				Uri uri = new Uri(url);
+				UriHostNameType hostNameType = uri.HostNameType;
+				string text;
+				if (hostNameType == UriHostNameType.Dns)
+				{
+					if (uri.IsLoopback)
+					{
+						text = uri.Host;
+					}
+					else
+					{
+						string host = uri.Host;
+						string[] array = host.Split(new char[]
+						{
+							'.'
+						});
+						text = ((array.Length == 2) ? host : string.Format("{0}.{1}", array[1], array[2]));
+					}
+				}
+				else
+				{
+					text = uri.Host;
+				}
+				result = text;
+			}
+			catch
+			{
+				result = url;
+			}
+			return result;
+		}
+
+		public static string CreateHttpResponse(string htmlUri, string parameters, bool isPost = false, string encoding = "UTF-8", int timeout = 5000, string userName = "", string password = "")
+		{
+			if (htmlUri.StartsWith("https"))
+			{
+				ServicePointManager.ServerCertificateValidationCallback = (RemoteCertificateValidationCallback)Delegate.Combine(ServicePointManager.ServerCertificateValidationCallback, new RemoteCertificateValidationCallback((object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors errors) => true));
+			}
+			HttpWebRequest httpWebRequest = WebRequest.Create(htmlUri) as HttpWebRequest;
+			httpWebRequest.ServicePoint.Expect100Continue = false;
+			httpWebRequest.ServicePoint.UseNagleAlgorithm = false;
+			httpWebRequest.ServicePoint.ConnectionLimit = 65536;
+			httpWebRequest.Proxy = null;
+			httpWebRequest.AllowWriteStreamBuffering = true;
+			httpWebRequest.AutomaticDecompression = DecompressionMethods.GZip;
+			httpWebRequest.ProtocolVersion = HttpVersion.Version11;
+			httpWebRequest.Accept = "*/*";
+			httpWebRequest.KeepAlive = true;
+			httpWebRequest.CachePolicy = new HttpRequestCachePolicy(HttpRequestCacheLevel.NoCacheNoStore);
+			httpWebRequest.UserAgent = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2150.5 Safari/537.36";
+			httpWebRequest.Headers.Add(HttpRequestHeader.AcceptEncoding, "gzip,deflate");
+			httpWebRequest.Timeout = timeout;
+			httpWebRequest.Credentials = (string.IsNullOrWhiteSpace(userName) ? null : new NetworkCredential(userName, password));
+			httpWebRequest.Method = (isPost ? "POST" : "GET");
+			if (isPost && !string.IsNullOrWhiteSpace(parameters))
+			{
+				byte[] bytes = Encoding.GetEncoding(encoding).GetBytes(parameters);
+				httpWebRequest.ContentLength = (long)bytes.Length;
+				httpWebRequest.ContentType = "application/x-www-form-urlencoded";
+				using (Stream requestStream = httpWebRequest.GetRequestStream())
+				{
+					requestStream.Write(bytes, 0, bytes.Length);
+					requestStream.Flush();
+					requestStream.Close();
+				}
+			}
+			StringBuilder stringBuilder = new StringBuilder(string.Empty);
+			using (HttpWebResponse httpWebResponse = (HttpWebResponse)httpWebRequest.GetResponse())
+			{
+				string text = httpWebResponse.ContentEncoding.ToLower();
+				Stream stream = httpWebResponse.GetResponseStream();
+				if (text.Contains("gzip"))
+				{
+					stream = new GZipStream(stream, CompressionMode.Decompress);
+				}
+				else if (text.Contains("deflate"))
+				{
+					stream = new DeflateStream(stream, CompressionMode.Decompress);
+				}
+				using (StreamReader streamReader = new StreamReader(stream, Encoding.GetEncoding(encoding)))
+				{
+					while (-1 != streamReader.Peek())
+					{
+						stringBuilder.Append(streamReader.ReadLine());
+					}
+					streamReader.Close();
+				}
+				stream.Close();
+				stream.Dispose();
+				httpWebResponse.Close();
+			}
+			httpWebRequest.Abort();
+			return stringBuilder.ToString();
+		}
+
+		public static void SendEmail(string emailHost, int emailPort, string emailUser, string emailPassword, bool isSsl, string subject, string body, string from, List<string> to, List<string> attachments = null)
+		{
+			MailMessage mailMessage = new MailMessage
+			{
+				BodyEncoding = Encoding.UTF8,
+				HeadersEncoding = Encoding.UTF8,
+				SubjectEncoding = Encoding.UTF8,
+				DeliveryNotificationOptions = DeliveryNotificationOptions.Never,
+				Subject = subject,
+				Body = body,
+				IsBodyHtml = true,
+				Priority = MailPriority.Normal,
+				From = new MailAddress(from)
+			};
+			to.ForEach(delegate(string m)
+			{
+				mailMessage.To.Add(new MailAddress(m));
+			});
+			if (attachments != null)
+			{
+				attachments.ForEach(delegate(string attachment)
+				{
+					mailMessage.Attachments.Add(new Attachment(attachment));
+				});
+			}
+			SmtpClient smtpClient = new SmtpClient
+			{
+				UseDefaultCredentials = false,
+				Credentials = new NetworkCredential(emailUser, emailPassword),
+				DeliveryMethod = SmtpDeliveryMethod.Network,
+				Host = emailHost,
+				Port = emailPort,
+				EnableSsl = isSsl,
+				Timeout = 5000
+			};
+			smtpClient.SendCompleted += delegate(object s, AsyncCompletedEventArgs e)
+			{
+				if (e.Error != null)
+				{
+					smtpClient.SendAsyncCancel();
+				}
+				smtpClient.Dispose();
+				mailMessage.Dispose();
+			};
+			smtpClient.SendAsync(mailMessage, null);
+		}
+	}
+}
